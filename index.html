@@ -705,7 +705,7 @@ function renderSessions(sessions) {
           <div class="session-body-actions">
             <span>${s.photos.length} foto${s.photos.length !== 1 ? 's' : ''} no álbum</span>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              ${hasSel ? `<button class="ghost-btn" style="font-size:12px;" onclick='adminDownload(${JSON.stringify(s.selections)})'>⬇ Baixar selecionadas</button><button class="danger-btn" style="font-size:12px;" onclick="clearSelection('${s.id}')">🗑 Excluir seleção</button>` : ''}
+              ${hasSel ? `<button class="ghost-btn" style="font-size:12px;" onclick='adminDownload(${JSON.stringify(s.selections)})'>⬇ Baixar selecionadas</button><button class="danger-btn" style="font-size:12px;" onclick="clearSelection('${s.id}')">🗑 Excluir sessão</button>` : ''}
               <button class="ghost-btn" style="font-size:12px;" onclick="copyToClip('${link}')">Copiar link</button>
             </div>
           </div>
@@ -728,10 +728,10 @@ function toggleSession(id) { document.getElementById('sb_' + id)?.classList.togg
 function copyToClip(text) { navigator.clipboard.writeText(text).catch(()=>{}); showToast('Link copiado!', 'info'); }
 async function adminDownload(selections) { await downloadPhotos(selections); }
 async function clearSelection(sessionId) {
-  if (!confirm('Excluir a seleção do cliente? Ele poderá selecionar novamente.')) return;
+  if (!confirm('Excluir esta sessão? Ela será removida da lista permanentemente.')) return;
   try {
-    await api(`/api/sessions/${sessionId}/clear-selection`, { method: 'PUT' });
-    showToast('Seleção excluída!', 'info');
+    await api(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    showToast('Sessão excluída!', 'info');
     loadSessions();
   } catch(e) { showToast('Erro: ' + e.message, 'error'); }
 }
