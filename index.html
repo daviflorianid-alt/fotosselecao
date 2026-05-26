@@ -372,7 +372,7 @@
     <!-- Sessions -->
     <div style="margin-top:48px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-        <h2 style="font-family:var(--font-display);font-size:22px;">Seleções recebidas</h2>
+        <h2 style="font-family:var(--font-display);font-size:22px;">Sessões</h2>
         <button class="ghost-btn" onclick="loadSessions()" style="font-size:12px;">↻ Atualizar</button>
       </div>
       <div id="sessionsList">
@@ -436,18 +436,19 @@ let currentMode = 'photographer';
 let pollInterval = null;
 let authToken = null;
 let authEmail = '';
+let authUserEmail = ''; // email real (para comparar ownerEmail)
 let currentAuthTab = 'login';
 let confirmedSelections = []; // para download após confirmação
 
 // ── PERSIST TOKEN ──
-function saveToken(token, email) {
-  try { localStorage.setItem('fs_token', token); localStorage.setItem('fs_email', email); } catch(e){}
+function saveToken(token, name, email) {
+  try { localStorage.setItem('fs_token', token); localStorage.setItem('fs_email', name); localStorage.setItem('fs_user_email', email || ''); } catch(e){}
 }
 function loadToken() {
-  try { return { token: localStorage.getItem('fs_token'), email: localStorage.getItem('fs_email') }; } catch(e){ return {}; }
+  try { return { token: localStorage.getItem('fs_token'), email: localStorage.getItem('fs_email'), userEmail: localStorage.getItem('fs_user_email') || '' }; } catch(e){ return {}; }
 }
 function clearToken() {
-  try { localStorage.removeItem('fs_token'); localStorage.removeItem('fs_email'); } catch(e){}
+  try { localStorage.removeItem('fs_token'); localStorage.removeItem('fs_email'); localStorage.removeItem('fs_user_email'); } catch(e){}
 }
 
 // ── API HELPERS ──
@@ -496,7 +497,8 @@ async function submitAuth() {
     if (!data.ok) throw new Error(json.error || 'Erro');
     authToken = json.token;
     authEmail = json.name || email;
-    saveToken(authToken, authEmail);
+    authUserEmail = json.email || email; // email real para comparar ownerEmail
+    saveToken(authToken, authEmail, authUserEmail);
     showApp();
   } catch(e) {
     errEl.textContent = e.message;
@@ -638,22 +640,34 @@ function copyLink() {
 
 // ── DOWNLOAD HELPER ──
 async function downloadPhotos(photos) {
-  if (!photos.length) { showToast('Nenhuma foto para baixar.', 'info'); return; }
+  if (!photos || !photos.length) { showToast('Nenhuma foto para baixar.', 'info'); return; }
   showToast(`Baixando ${photos.length} foto${photos.length !== 1 ? 's' : ''}...`, 'info');
   for (const photo of photos) {
     try {
-      const res = await fetch(photo.url);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      // Tenta fetch (funciona se o B2 tiver CORS liberado)
+      const res = await fetch(photo.url, { mode: 'cors' });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = photo.name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        throw new Error('fetch failed');
+      }
+    } catch(e) {
+      // Fallback: abre em nova aba (o usuário salva manualmente)
       const a = document.createElement('a');
-      a.href = url; a.download = photo.name;
+      a.href = photo.url;
+      a.download = photo.name;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      await new Promise(r => setTimeout(r, 400));
-    } catch(e) {
-      showToast('Erro ao baixar ' + photo.name, 'error');
     }
+    await new Promise(r => setTimeout(r, 500));
   }
 }
 
@@ -686,10 +700,15 @@ function renderSessions(sessions) {
     el.innerHTML = `<div class="selections-empty"><div class="icon">📭</div><p>Nenhuma sessão criada ainda.</p></div>`;
     return;
   }
-  el.innerHTML = `<div class="sessions-list">${sessions.map(s => {
+
+  const received = sessions.filter(s => s.selections && s.selections.length > 0);
+  const sent     = sessions.filter(s => !s.selections || s.selections.length === 0);
+
+  function renderCard(s) {
     const hasSel = s.selections && s.selections.length > 0;
     const date = s.confirmedAt ? new Date(s.confirmedAt).toLocaleString('pt-BR') : new Date(s.createdAt).toLocaleString('pt-BR');
     const link = `${location.origin}${location.pathname}?session=${s.id}`;
+    const isOwner = !s.ownerEmail || s.ownerEmail.toLowerCase() === authUserEmail.toLowerCase();
     return `
       <div class="session-card ${hasSel ? 'has-selection' : ''}">
         <div class="session-header" onclick="toggleSession('${s.id}')">
@@ -707,7 +726,7 @@ function renderSessions(sessions) {
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
               ${hasSel ? `<button class="ghost-btn" style="font-size:12px;" onclick='adminDownload(${JSON.stringify(s.selections)})'>⬇ Baixar selecionadas</button>` : ''}
               <button class="ghost-btn" style="font-size:12px;" onclick="copyToClip('${link}')">Copiar link</button>
-              <button class="danger-btn" style="font-size:12px;" onclick="clearSelection('${s.id}')">🗑 Excluir sessão</button>
+              ${isOwner ? `<button class="danger-btn" style="font-size:12px;" onclick="clearSelection('${s.id}')">🗑 Excluir sessão</button>` : ''}
             </div>
           </div>
           ${hasSel ? `
@@ -722,7 +741,31 @@ function renderSessions(sessions) {
           ` : '<p style="font-size:13px;color:var(--muted);padding:8px 0;">O cliente ainda não confirmou a seleção.</p>'}
         </div>
       </div>`;
-  }).join('')}</div>`;
+  }
+
+  let html = '';
+
+  if (received.length) {
+    html += `
+      <div style="margin-bottom:28px;">
+        <h3 style="font-family:var(--font-display);font-size:18px;color:var(--accent);margin-bottom:14px;">
+          ✅ Seleções recebidas <span style="font-family:var(--font-body);font-size:13px;color:var(--muted);font-weight:400;">(${received.length})</span>
+        </h3>
+        <div class="sessions-list">${received.map(renderCard).join('')}</div>
+      </div>`;
+  }
+
+  if (sent.length) {
+    html += `
+      <div>
+        <h3 style="font-family:var(--font-display);font-size:18px;color:var(--muted);margin-bottom:14px;">
+          📤 Aguardando cliente <span style="font-family:var(--font-body);font-size:13px;color:var(--muted);font-weight:400;">(${sent.length})</span>
+        </h3>
+        <div class="sessions-list">${sent.map(renderCard).join('')}</div>
+      </div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 function toggleSession(id) { document.getElementById('sb_' + id)?.classList.toggle('open'); }
@@ -865,10 +908,11 @@ window.showToast = function(msg, type = 'info') {
     return;
   }
   // Check saved token
-  const { token, email } = loadToken();
+  const { token, email, userEmail } = loadToken();
   if (token) {
     authToken = token;
     authEmail = email || '';
+    authUserEmail = userEmail || '';
     showApp();
   }
 })();
