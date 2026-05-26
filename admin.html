@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FotoSeleção — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script>
+  const WORKER_URL = "https://fotosselecao-worker.davi-florianid.workers.dev";
+  const ADMIN_EMAIL = "admin@fotosselecao.com";
+</script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #0d0d0d; --surface: #161616; --surface2: #1e1e1e; --surface3: #232323;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.14);
+  --text: #f0ede8; --muted: #777; --muted2: #555;
+  --accent: #c8a96e; --accent2: #e8c98e; --accent-dim: rgba(200,169,110,0.1);
+  --danger: #e05555; --danger-dim: rgba(224,85,85,0.1);
+  --success: #5bbd8a; --success-dim: rgba(91,189,138,0.1);
+  --info: #6ab0e0; --info-dim: rgba(106,176,224,0.1);
+  --font-display: 'DM Serif Display', serif; --font-body: 'DM Sans', sans-serif;
+  --sidebar-w: 220px;
+}
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); min-height: 100vh; font-size: 14px; line-height: 1.6; }
+
+/* LOGIN */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login-card { background: var(--surface); border: 0.5px solid var(--border2); border-radius: 20px; padding: 48px 40px; width: 100%; max-width: 380px; }
+.login-logo { font-family: var(--font-display); font-size: 26px; color: var(--accent); margin-bottom: 4px; }
+.login-logo span { color: var(--text); }
+.login-badge { display: inline-block; font-size: 11px; background: rgba(200,169,110,0.15); color: var(--accent); border: 0.5px solid rgba(200,169,110,0.3); border-radius: 20px; padding: 3px 10px; margin-bottom: 28px; letter-spacing: 0.07em; }
+.login-input { display: block; width: 100%; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 8px; padding: 11px 14px; color: var(--text); font-family: var(--font-body); font-size: 14px; outline: none; transition: border-color 0.2s; margin-bottom: 12px; }
+.login-input:focus { border-color: var(--accent); }
+.login-input::placeholder { color: var(--muted); }
+.login-btn { width: 100%; padding: 12px; background: var(--accent); color: #1a1208; border: none; border-radius: 8px; font-family: var(--font-body); font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; margin-top: 4px; }
+.login-btn:hover { background: var(--accent2); }
+.login-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.login-error { font-size: 13px; color: var(--danger); text-align: center; min-height: 18px; margin-top: 8px; }
+
+/* LAYOUT */
+#adminApp { display: none; }
+.layout { display: flex; min-height: 100vh; }
+
+/* SIDEBAR */
+.sidebar { width: var(--sidebar-w); background: var(--surface); border-right: 0.5px solid var(--border); display: flex; flex-direction: column; position: fixed; top: 0; left: 0; height: 100vh; z-index: 100; }
+.sidebar-logo { padding: 24px 20px 20px; border-bottom: 0.5px solid var(--border); }
+.sidebar-logo .name { font-family: var(--font-display); font-size: 20px; color: var(--accent); }
+.sidebar-logo .name span { color: var(--text); }
+.sidebar-logo .role { font-size: 11px; color: var(--muted); letter-spacing: 0.06em; margin-top: 2px; }
+.sidebar-nav { flex: 1; padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.18s; border: none; background: none; width: 100%; text-align: left; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--accent-dim); color: var(--accent); }
+.nav-item .icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.nav-badge { margin-left: auto; background: var(--accent); color: #1a1208; font-size: 10px; font-weight: 700; border-radius: 10px; padding: 1px 6px; min-width: 18px; text-align: center; }
+.sidebar-footer { padding: 16px 10px; border-top: 0.5px solid var(--border); }
+.sidebar-user { font-size: 12px; color: var(--muted); padding: 0 4px 12px; }
+.sidebar-user strong { color: var(--text); display: block; font-size: 13px; }
+.logout-btn { width: 100%; padding: 8px 12px; background: none; border: 0.5px solid var(--border2); border-radius: 7px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.18s; font-family: var(--font-body); }
+.logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+/* MAIN */
+.main { margin-left: var(--sidebar-w); flex: 1; min-height: 100vh; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 18px 32px; border-bottom: 0.5px solid var(--border); background: var(--surface); position: sticky; top: 0; z-index: 50; }
+.topbar-title { font-family: var(--font-display); font-size: 22px; }
+.topbar-actions { display: flex; gap: 10px; align-items: center; }
+.refresh-btn { padding: 7px 14px; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 7px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.18s; font-family: var(--font-body); }
+.refresh-btn:hover { color: var(--text); }
+.live-dot { width: 7px; height: 7px; background: var(--success); border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+.live-label { font-size: 12px; color: var(--success); display: flex; align-items: center; gap: 5px; }
+.page-content { padding: 32px; display: none; }
+.page-content.active { display: block; }
+
+/* STAT CARDS */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+.stat-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 14px; padding: 20px 22px; transition: border-color 0.2s; }
+.stat-card:hover { border-color: var(--border2); }
+.stat-card.accent { border-color: rgba(200,169,110,0.2); }
+.stat-card.green { border-color: rgba(91,189,138,0.2); }
+.stat-card.red { border-color: rgba(224,85,85,0.2); }
+.stat-card.blue { border-color: rgba(106,176,224,0.2); }
+.stat-icon { font-size: 22px; margin-bottom: 12px; opacity: 0.8; }
+.stat-val { font-family: var(--font-display); font-size: 34px; line-height: 1; margin-bottom: 4px; }
+.stat-card.accent .stat-val { color: var(--accent); }
+.stat-card.green .stat-val { color: var(--success); }
+.stat-card.red .stat-val { color: var(--danger); }
+.stat-card.blue .stat-val { color: var(--info); }
+.stat-label { font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.04em; }
+
+/* OVERVIEW */
+.overview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.overview-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 14px; padding: 22px; }
+.overview-card h3 { font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 18px; }
+.prog-wrap { margin-bottom: 12px; cursor: pointer; padding: 6px 8px; border-radius: 8px; transition: background 0.15s; }
+.prog-wrap:hover { background: var(--surface2); }
+.prog-label { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 12px; color: var(--muted); }
+.prog-label span:last-child { color: var(--accent); font-weight: 600; }
+.prog-bar { height: 3px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+.prog-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; transition: width 0.5s ease; }
+
+/* FILTER BAR */
+.filter-bar { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+.filter-btn { padding: 5px 14px; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 20px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.18s; font-family: var(--font-body); }
+.filter-btn.active { background: var(--accent-dim); color: var(--accent); border-color: rgba(200,169,110,0.3); }
+.search-input { padding: 5px 14px; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 20px; color: var(--text); font-size: 12px; outline: none; font-family: var(--font-body); transition: border-color 0.2s; min-width: 180px; }
+.search-input::placeholder { color: var(--muted2); }
+.search-input:focus { border-color: var(--accent); }
+
+/* TABLE */
+.sessions-table { width: 100%; border-collapse: collapse; }
+.sessions-table th { font-size: 11px; color: var(--muted); font-weight: 500; letter-spacing: 0.07em; text-align: left; padding: 10px 14px; border-bottom: 0.5px solid var(--border); white-space: nowrap; }
+.sessions-table td { padding: 13px 14px; border-bottom: 0.5px solid var(--border); vertical-align: middle; }
+.sessions-table tr:last-child td { border-bottom: none; }
+.sessions-table tr:hover td { background: var(--surface2); }
+.table-wrap { background: var(--surface); border: 0.5px solid var(--border); border-radius: 14px; overflow: hidden; overflow-x: auto; }
+.badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.badge.confirmed { background: var(--accent-dim); color: var(--accent); border: 0.5px solid rgba(200,169,110,0.25); }
+.badge.pending { background: rgba(119,119,119,0.1); color: var(--muted); border: 0.5px solid var(--border2); }
+.t-name { font-weight: 500; font-size: 14px; }
+.t-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.t-date { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.t-photos { font-size: 13px; font-weight: 500; }
+.t-owner { font-size: 12px; color: var(--muted); }
+.row-actions { display: flex; gap: 6px; }
+.act-btn { padding: 4px 10px; background: var(--surface3); border: 0.5px solid var(--border2); border-radius: 6px; color: var(--muted); font-size: 11px; cursor: pointer; transition: all 0.15s; font-family: var(--font-body); }
+.act-btn:hover { color: var(--accent); border-color: rgba(200,169,110,0.4); }
+.act-btn.danger:hover { color: var(--danger); border-color: rgba(224,85,85,0.4); }
+
+/* PHOTOGRAPHER CARDS */
+.phot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.phot-card { background: var(--surface); border: 0.5px solid var(--border); border-radius: 14px; padding: 22px; transition: border-color 0.2s; }
+.phot-card:hover { border-color: var(--border2); }
+.phot-avatar-wrap { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.phot-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--accent-dim); border: 1.5px solid rgba(200,169,110,0.25); display: flex; align-items: center; justify-content: center; font-size: 18px; font-family: var(--font-display); color: var(--accent); overflow: hidden; flex-shrink: 0; }
+.phot-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.phot-info { flex: 1; min-width: 0; }
+.phot-name { font-weight: 600; font-size: 14px; margin-bottom: 2px; }
+.phot-email { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phot-stats { display: flex; gap: 16px; margin-bottom: 16px; }
+.phot-stat { display: flex; flex-direction: column; gap: 2px; }
+.phot-stat-val { font-size: 20px; font-weight: 600; color: var(--accent); font-family: var(--font-display); }
+.phot-stat-label { font-size: 11px; color: var(--muted); }
+.phot-avatar-edit { display: flex; gap: 8px; align-items: center; }
+.phot-avatar-input { flex: 1; background: var(--surface2); border: 0.5px solid var(--border2); border-radius: 6px; padding: 6px 10px; color: var(--text); font-size: 11px; outline: none; font-family: var(--font-body); }
+.phot-avatar-input:focus { border-color: var(--accent); }
+.phot-avatar-input::placeholder { color: var(--muted2); }
+.phot-avatar-save { padding: 5px 10px; background: var(--accent-dim); border: 0.5px solid rgba(200,169,110,0.3); border-radius: 6px; color: var(--accent); font-size: 11px; cursor: pointer; font-family: var(--font-body); transition: all 0.15s; }
+.phot-avatar-save:hover { background: rgba(200,169,110,0.2); }
+
+/* ACTIVITY */
+.activity-list { display: flex; flex-direction: column; gap: 0; }
+.activity-item { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; border-bottom: 0.5px solid var(--border); }
+.activity-item:last-child { border-bottom: none; }
+.activity-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+.activity-dot.sel { background: var(--accent-dim); border: 1px solid rgba(200,169,110,0.25); }
+.activity-dot.new { background: var(--info-dim); border: 1px solid rgba(106,176,224,0.25); }
+.activity-dot.del { background: var(--danger-dim); border: 1px solid rgba(224,85,85,0.25); }
+.activity-body { flex: 1; }
+.activity-text { font-size: 13px; line-height: 1.5; }
+.activity-text strong { color: var(--accent); font-weight: 600; }
+.activity-text .phot-tag { color: var(--info); font-size: 12px; }
+.activity-time { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* MODAL */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 300; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal-box { background: var(--surface); border: 0.5px solid var(--border2); border-radius: 18px; padding: 32px; max-width: 560px; width: 90%; max-height: 85vh; overflow-y: auto; }
+.modal-title { font-family: var(--font-display); font-size: 22px; margin-bottom: 6px; }
+.modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+.modal-close-btn { float: right; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; margin-top: -4px; padding: 0 4px; }
+.modal-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 16px; }
+.modal-photo { aspect-ratio: 1; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: var(--surface2); }
+.modal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.modal-photo.sel-photo { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(200,169,110,0.2); }
+.detail-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
+.detail-row:last-child { border-bottom: none; }
+.detail-row .k { color: var(--muted); }
+.detail-row .v { font-weight: 500; text-align: right; max-width: 60%; word-break: break-all; }
+.modal-actions-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* SPINNER / EMPTY */
+.spinner-wrap { display: flex; align-items: center; justify-content: center; padding: 60px; }
+.spinner { width: 28px; height: 28px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-state .ei { font-size: 36px; opacity: 0.3; margin-bottom: 10px; }
+
+/* TOAST */
+.toasts { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 10px; z-index: 999; }
+.toast { background: var(--surface); border: 0.5px solid var(--border2); border-radius: 10px; padding: 11px 16px; font-size: 13px; animation: slideIn 0.25s ease; }
+.toast.success { border-color: rgba(91,189,138,0.35); color: var(--success); }
+.toast.info { border-color: rgba(200,169,110,0.35); color: var(--accent); }
+.toast.error { border-color: rgba(224,85,85,0.35); color: var(--danger); }
+@keyframes slideIn { from{transform:translateX(12px);opacity:0} to{transform:translateX(0);opacity:1} }
+
+.section-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.section-hd h2 { font-family: var(--font-display); font-size: 20px; }
+.section-hd small { font-size: 12px; color: var(--muted); }
+
+@media (max-width: 900px) {
+  .sidebar { width: 60px; }
+  .sidebar-logo .name, .sidebar-logo .role, .nav-item .label, .nav-badge, .sidebar-user, .logout-btn { display: none; }
+  .nav-item { justify-content: center; padding: 10px; }
+  .main { margin-left: 60px; }
+  .overview-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .page-content { padding: 16px; }
+  .topbar { padding: 14px 16px; }
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  .phot-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-logo">Foto<span>Seleção</span></div>
+      <div class="login-badge">PAINEL ADMINISTRATIVO</div>
+      <input class="login-input" type="email" id="loginEmail" placeholder="E-mail admin" autocomplete="email">
+      <input class="login-input" type="password" id="loginPassword" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">Acessar painel →</button>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN APP -->
+<div id="adminApp">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="name">Foto<span>Seleção</span></div>
+        <div class="role">ADMIN</div>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" onclick="showPage('overview')" id="nav-overview">
+          <span class="icon">◈</span><span class="label">Visão Geral</span>
+        </button>
+        <button class="nav-item" onclick="showPage('sessions')" id="nav-sessions">
+          <span class="icon">📁</span><span class="label">Sessões</span>
+          <span class="nav-badge" id="badgePending" style="display:none">0</span>
+        </button>
+        <button class="nav-item" onclick="showPage('photographers')" id="nav-photographers">
+          <span class="icon">👤</span><span class="label">Fotógrafos</span>
+        </button>
+        <button class="nav-item" onclick="showPage('activity')" id="nav-activity">
+          <span class="icon">⚡</span><span class="label">Atividade</span>
+          <span class="nav-badge" id="badgeNew" style="display:none">!</span>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user" id="sidebarUser"></div>
+        <button class="logout-btn" onclick="doLogout()">Sair ×</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="topbar-title" id="topbarTitle">Visão Geral</div>
+        <div class="topbar-actions">
+          <div class="live-label"><span class="live-dot"></span> Ao vivo</div>
+          <button class="refresh-btn" onclick="loadAll()">↻ Atualizar</button>
+        </div>
+      </div>
+
+      <!-- PAGE: OVERVIEW -->
+      <div class="page-content active" id="page-overview">
+        <div class="stat-grid" id="statsGrid">
+          <div class="spinner-wrap" style="grid-column:1/-1"><div class="spinner"></div></div>
+        </div>
+        <div class="overview-grid">
+          <div class="overview-card">
+            <h3>⏳ Aguardando seleção</h3>
+            <div id="overviewPending"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+          </div>
+          <div class="overview-card">
+            <h3>✅ Confirmadas recentemente</h3>
+            <div id="overviewConfirmed"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE: SESSIONS -->
+      <div class="page-content" id="page-sessions">
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="setFilter('all',this)">Todas</button>
+          <button class="filter-btn" onclick="setFilter('confirmed',this)">✅ Confirmadas</button>
+          <button class="filter-btn" onclick="setFilter('pending',this)">⏳ Pendentes</button>
+          <input class="search-input" id="searchInput" placeholder="🔍 Buscar cliente, evento ou fotógrafo…" oninput="renderSessions()">
+        </div>
+        <div class="table-wrap">
+          <table class="sessions-table">
+            <thead>
+              <tr>
+                <th>Cliente / Evento</th>
+                <th>Fotógrafo</th>
+                <th>Fotos</th>
+                <th>Status</th>
+                <th>Criado em</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="sessionsBody">
+              <tr><td colspan="6"><div class="spinner-wrap"><div class="spinner"></div></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- PAGE: PHOTOGRAPHERS -->
+      <div class="page-content" id="page-photographers">
+        <div class="section-hd">
+          <h2>Fotógrafos cadastrados</h2>
+          <small id="photCount">—</small>
+        </div>
+        <div class="phot-grid" id="photGrid">
+          <div class="spinner-wrap"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- PAGE: ACTIVITY -->
+      <div class="page-content" id="page-activity">
+        <div class="section-hd">
+          <h2>Feed de atividade</h2>
+          <small id="activityCount">—</small>
+        </div>
+        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:14px;padding:4px 20px;">
+          <div class="activity-list" id="activityList">
+            <div class="spinner-wrap"><div class="spinner"></div></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <button class="modal-close-btn" onclick="closeModal()">×</button>
+    <div id="modalContent"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+// ── STATE ──
+let adminToken = null;
+let adminEmail = '';
+let allSessions = [];
+let currentFilter = 'all';
+let pollInterval = null;
+let avatarMap = {}; // email -> avatar URL (localStorage)
+let deletionLog = []; // {clientName, ownerEmail, ownerName, time}
+
+// ── PERSIST ──
+function saveAdminToken(t, e) { try { localStorage.setItem('admin_token', t); localStorage.setItem('admin_email', e); } catch(e){} }
+function loadAdminToken() { try { return { token: localStorage.getItem('admin_token'), email: localStorage.getItem('admin_email') }; } catch(e){ return {}; } }
+function clearAdminToken() { try { localStorage.removeItem('admin_token'); localStorage.removeItem('admin_email'); } catch(e){} }
+
+function saveAvatars() { try { localStorage.setItem('fs_avatars', JSON.stringify(avatarMap)); } catch(e){} }
+function loadAvatars() { try { avatarMap = JSON.parse(localStorage.getItem('fs_avatars') || '{}'); } catch(e){ avatarMap = {}; } }
+
+function saveDeletionLog() { try { localStorage.setItem('fs_del_log', JSON.stringify(deletionLog.slice(0,100))); } catch(e){} }
+function loadDeletionLog() { try { deletionLog = JSON.parse(localStorage.getItem('fs_del_log') || '[]'); } catch(e){ deletionLog = []; } }
+
+// ── API ──
+async function api(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...options.headers };
+  if (adminToken) headers['X-Auth-Token'] = adminToken;
+  const res = await fetch(WORKER_URL + path, { ...options, headers });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Erro');
+  return data;
+}
+
+// ── LOGIN ──
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  const btn = document.getElementById('loginBtn');
+  if (!email || !password) { errEl.textContent = 'Preencha e-mail e senha.'; return; }
+  btn.disabled = true; btn.textContent = 'Acessando...'; errEl.textContent = '';
+  try {
+    const res = await fetch(WORKER_URL + '/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Credenciais inválidas');
+    adminToken = json.token;
+    adminEmail = json.name || email;
+    saveAdminToken(adminToken, adminEmail);
+    showAdmin();
+  } catch(e) {
+    errEl.textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Acessar painel →';
+  }
+}
+
+function doLogout() {
+  clearAdminToken(); adminToken = null; adminEmail = '';
+  stopPolling();
+  document.getElementById('adminApp').style.display = 'none';
+  document.getElementById('loginView').style.display = 'block';
+}
+
+function showAdmin() {
+  document.getElementById('loginView').style.display = 'none';
+  document.getElementById('adminApp').style.display = 'block';
+  document.getElementById('sidebarUser').innerHTML = `<strong>${esc(adminEmail)}</strong>Admin`;
+  loadAvatars();
+  loadDeletionLog();
+  loadAll();
+  startPolling();
+}
+
+// ── DATA ──
+async function loadAll() {
+  try {
+    const { sessions } = await api('/api/sessions');
+    allSessions = sessions;
+    renderAll();
+  } catch(e) {
+    toast('Erro ao carregar: ' + e.message, 'error');
+  }
+}
+
+function renderAll() {
+  renderStats();
+  renderOverview();
+  renderSessions();
+  renderPhotographers();
+  renderActivity();
+}
+
+// ── STATS ──
+function renderStats() {
+  const total = allSessions.length;
+  const confirmed = allSessions.filter(s => s.confirmedAt).length;
+  const pending = total - confirmed;
+  const totalPhotos = allSessions.reduce((a, s) => a + (s.photos?.length || 0), 0);
+
+  document.getElementById('statsGrid').innerHTML = `
+    <div class="stat-card accent"><div class="stat-icon">📁</div><div class="stat-val">${total}</div><div class="stat-label">SESSÕES TOTAIS</div></div>
+    <div class="stat-card green"><div class="stat-icon">✅</div><div class="stat-val">${confirmed}</div><div class="stat-label">CONFIRMADAS</div></div>
+    <div class="stat-card red"><div class="stat-icon">⏳</div><div class="stat-val">${pending}</div><div class="stat-label">AGUARDANDO</div></div>
+    <div class="stat-card blue"><div class="stat-icon">🖼</div><div class="stat-val">${totalPhotos.toLocaleString('pt-BR')}</div><div class="stat-label">FOTOS ENVIADAS</div></div>
+  `;
+  const pb = document.getElementById('badgePending');
+  if (pending > 0) { pb.textContent = pending; pb.style.display = ''; } else pb.style.display = 'none';
+}
+
+// ── OVERVIEW ──
+function renderOverview() {
+  const pending = allSessions.filter(s => !s.confirmedAt).sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt)).slice(0,6);
+  const confirmed = allSessions.filter(s => s.confirmedAt).sort((a,b) => new Date(b.confirmedAt)-new Date(a.confirmedAt)).slice(0,6);
+
+  document.getElementById('overviewPending').innerHTML = pending.length ? pending.map(s => `
+    <div class="prog-wrap" onclick="openDetail('${esc(s.id)}')">
+      <div class="prog-label">
+        <span>${esc(s.clientName)}${s.eventName ? ' — '+esc(s.eventName) : ''}</span>
+        <span>${s.photos?.length||0} fotos</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill" style="width:100%;background:var(--border2)"></div></div>
+    </div>`).join('')
+    : '<div class="empty-state"><div class="ei">🎉</div>Nenhuma pendente</div>';
+
+  document.getElementById('overviewConfirmed').innerHTML = confirmed.length ? confirmed.map(s => `
+    <div class="prog-wrap" onclick="openDetail('${esc(s.id)}')">
+      <div class="prog-label">
+        <span>${esc(s.clientName)}${s.eventName ? ' — '+esc(s.eventName) : ''}</span>
+        <span>${s.selections?.length||0} / ${s.photos?.length||0}</span>
+      </div>
+      <div class="prog-bar"><div class="prog-fill" style="width:${Math.round((s.selections?.length||0)/(s.photos?.length||1)*100)}%"></div></div>
+    </div>`).join('')
+    : '<div class="empty-state"><div class="ei">📭</div>Nenhuma ainda</div>';
+}
+
+// ── SESSIONS TABLE ──
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderSessions();
+}
+
+function renderSessions() {
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  let list = allSessions;
+  if (currentFilter === 'confirmed') list = list.filter(s => s.confirmedAt);
+  if (currentFilter === 'pending') list = list.filter(s => !s.confirmedAt);
+  if (search) list = list.filter(s =>
+    (s.clientName||'').toLowerCase().includes(search) ||
+    (s.eventName||'').toLowerCase().includes(search) ||
+    (s.ownerEmail||'').toLowerCase().includes(search)
+  );
+  list = list.sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
+
+  if (!list.length) {
+    document.getElementById('sessionsBody').innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="ei">🔍</div>Nenhuma sessão encontrada.</div></td></tr>`;
+    return;
+  }
+  document.getElementById('sessionsBody').innerHTML = list.map(s => {
+    const badge = s.confirmedAt
+      ? `<span class="badge confirmed">✅ Confirmado</span>`
+      : `<span class="badge pending">⏳ Aguardando</span>`;
+    const selCount = s.selections?.length || 0;
+    const photoCount = s.photos?.length || 0;
+    const clientUrl = buildClientUrl(s.id);
+    return `<tr>
+      <td><div class="t-name">${esc(s.clientName)}</div><div class="t-sub">${esc(s.eventName||'—')}</div></td>
+      <td class="t-owner">${esc(s.ownerEmail||'—')}</td>
+      <td class="t-photos">${s.confirmedAt?`<span style="color:var(--accent)">${selCount}</span> / ${photoCount}`:photoCount}</td>
+      <td>${badge}</td>
+      <td class="t-date">${fmtDate(s.createdAt)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="act-btn" onclick="openDetail('${esc(s.id)}')">🔍 Ver</button>
+          <button class="act-btn" onclick="copyToClipboard('${esc(clientUrl)}')">🔗 Link</button>
+          <button class="act-btn danger" onclick="deleteSession('${esc(s.id)}','${esc(s.clientName)}','${esc(s.ownerEmail||'')}')">Excluir</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+// ── PHOTOGRAPHERS ──
+function renderPhotographers() {
+  const map = {};
+  allSessions.forEach(s => {
+    const e = s.ownerEmail || 'desconhecido';
+    if (!map[e]) map[e] = { email: e, total: 0, confirmed: 0, photos: 0 };
+    map[e].total++;
+    if (s.confirmedAt) map[e].confirmed++;
+    map[e].photos += s.photos?.length || 0;
+  });
+  const phots = Object.values(map).sort((a,b) => b.total - a.total);
+  document.getElementById('photCount').textContent = `${phots.length} fotógrafo${phots.length!==1?'s':''}`;
+
+  if (!phots.length) {
+    document.getElementById('photGrid').innerHTML = '<div class="empty-state"><div class="ei">👤</div>Nenhum fotógrafo ainda.</div>';
+    return;
+  }
+  document.getElementById('photGrid').innerHTML = phots.map(p => {
+    const rate = p.total ? Math.round(p.confirmed/p.total*100) : 0;
+    const initials = p.email.split('@')[0].slice(0,2).toUpperCase();
+    const avatarUrl = avatarMap[p.email] || '';
+    const avatarHtml = avatarUrl
+      ? `<img src="${esc(avatarUrl)}" alt="${initials}" onerror="this.parentElement.textContent='${initials}'">`
+      : initials;
+    const safeEmail = p.email.replace(/"/g,'&quot;');
+    return `<div class="phot-card">
+      <div class="phot-avatar-wrap">
+        <div class="phot-avatar" id="av_${btoa(p.email).replace(/=/g,'')}">${avatarHtml}</div>
+        <div class="phot-info">
+          <div class="phot-name">${esc(p.email.split('@')[0])}</div>
+          <div class="phot-email">${esc(p.email)}</div>
+        </div>
+      </div>
+      <div class="phot-stats">
+        <div class="phot-stat"><div class="phot-stat-val">${p.total}</div><div class="phot-stat-label">Sessões</div></div>
+        <div class="phot-stat"><div class="phot-stat-val">${p.confirmed}</div><div class="phot-stat-label">Confirmadas</div></div>
+        <div class="phot-stat"><div class="phot-stat-val">${rate}%</div><div class="phot-stat-label">Taxa</div></div>
+      </div>
+      <div class="phot-avatar-edit">
+        <input class="phot-avatar-input" id="ai_${btoa(p.email).replace(/=/g,'')}" placeholder="URL da foto de perfil" value="${esc(avatarUrl)}">
+        <button class="phot-avatar-save" onclick="saveAvatar('${safeEmail}')">Salvar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function saveAvatar(email) {
+  const key = btoa(email).replace(/=/g,'');
+  const url = document.getElementById('ai_' + key)?.value?.trim() || '';
+  avatarMap[email] = url;
+  saveAvatars();
+  renderPhotographers();
+  toast('Foto de perfil salva!', 'success');
+}
+
+// ── ACTIVITY ──
+function renderActivity() {
+  const events = [];
+
+  // Sessions criadas
+  allSessions.forEach(s => {
+    events.push({
+      type: 'new',
+      text: `Nova sessão criada para <strong>${esc(s.clientName)}</strong>${s.eventName?' — '+esc(s.eventName):''}`,
+      phot: s.ownerEmail || '',
+      time: s.createdAt,
+      sessionId: s.id
+    });
+    if (s.confirmedAt) {
+      events.push({
+        type: 'sel',
+        text: `<strong>${esc(s.clientName)}</strong> confirmou ${s.selections?.length||0} foto${(s.selections?.length||0)!==1?'s':''}`,
+        phot: s.ownerEmail || '',
+        time: s.confirmedAt,
+        sessionId: s.id
+      });
+    }
+  });
+
+  // Exclusões registradas localmente
+  deletionLog.forEach(d => {
+    events.push({
+      type: 'del',
+      text: `Sessão de <strong>${esc(d.clientName)}</strong> foi excluída`,
+      phot: d.ownerEmail || '',
+      time: d.time,
+      sessionId: null
+    });
+  });
+
+  events.sort((a,b) => new Date(b.time)-new Date(a.time));
+  const shown = events.slice(0,50);
+  document.getElementById('activityCount').textContent = `${shown.length} eventos`;
+
+  if (!shown.length) {
+    document.getElementById('activityList').innerHTML = '<div class="empty-state"><div class="ei">⚡</div>Sem atividade ainda.</div>';
+    return;
+  }
+
+  document.getElementById('activityList').innerHTML = shown.map(e => {
+    const photTag = e.phot ? `<span class="phot-tag">📷 ${esc(e.phot)}</span>` : '';
+    const verBtn = e.sessionId ? `<button class="act-btn" onclick="openDetail('${esc(e.sessionId)}')">Ver</button>` : '';
+    return `<div class="activity-item">
+      <div class="activity-dot ${e.type}">${e.type==='new'?'📁':e.type==='sel'?'✅':'🗑'}</div>
+      <div class="activity-body">
+        <div class="activity-text">${e.text} ${photTag}</div>
+        <div class="activity-time">${fmtDateFull(e.time)}</div>
+      </div>
+      ${verBtn}
+    </div>`;
+  }).join('');
+
+  // Badge atividade recente (última hora)
+  const fresh = shown.filter(e => e.time && (Date.now()-new Date(e.time))<3600000).length;
+  const bn = document.getElementById('badgeNew');
+  if (fresh > 0) { bn.textContent = fresh; bn.style.display = ''; } else bn.style.display = 'none';
+}
+
+// ── DETAIL MODAL ──
+function openDetail(sessionId) {
+  const s = allSessions.find(x => x.id === sessionId);
+  if (!s) { toast('Sessão não encontrada.', 'error'); return; }
+  const clientUrl = buildClientUrl(s.id);
+
+  document.getElementById('modalContent').innerHTML = `
+    <div class="modal-title">${esc(s.clientName)}</div>
+    <div class="modal-sub">${esc(s.eventName||'Sem evento')} &mdash; criado em ${fmtDateFull(s.createdAt)}</div>
+    <div class="detail-row"><span class="k">Fotógrafo</span><span class="v">${esc(s.ownerEmail||'—')}</span></div>
+    <div class="detail-row"><span class="k">Fotos enviadas</span><span class="v">${s.photos?.length||0}</span></div>
+    <div class="detail-row"><span class="k">Min / Max seleção</span><span class="v">${s.minPhotos||0} / ${s.maxPhotos||'—'}</span></div>
+    <div class="detail-row"><span class="k">Status</span><span class="v">${s.confirmedAt?`<span style="color:var(--success)">✅ Confirmado em ${fmtDateFull(s.confirmedAt)}</span>`:'<span style="color:var(--muted)">⏳ Aguardando cliente</span>'}</span></div>
+    ${s.confirmedAt?`<div class="detail-row"><span class="k">Fotos selecionadas</span><span class="v" style="color:var(--accent)">${s.selections?.length||0}</span></div>`:''}
+    <div class="detail-row"><span class="k">Link do cliente</span><span class="v" style="font-size:11px;font-family:monospace;color:var(--muted)">${esc(clientUrl)}</span></div>
+    <div class="modal-actions-row">
+      <button class="act-btn" onclick="copyToClipboard('${esc(clientUrl)}')">🔗 Copiar link</button>
+      ${s.confirmedAt?`<button class="act-btn" onclick="resetSession('${esc(s.id)}')">↺ Resetar seleção</button>`:''}
+      <button class="act-btn danger" onclick="deleteSession('${esc(s.id)}','${esc(s.clientName)}','${esc(s.ownerEmail||'')}');closeModal()">🗑 Excluir sessão</button>
+    </div>
+    ${s.photos?.length?`
+    <div style="margin-top:20px;">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">
+        ${s.confirmedAt?`Fotos selecionadas (${s.selections?.length||0})`:`Todas as fotos (${s.photos.length})`}
+      </div>
+      <div class="modal-photos">
+        ${(s.confirmedAt?s.selections:s.photos)?.map(p=>`
+          <div class="modal-photo ${s.confirmedAt?'sel-photo':''}">
+            <img src="${esc(p.url)}" alt="${esc(p.name)}" loading="lazy">
+          </div>`).join('')||''}
+      </div>
+    </div>`:''}
+  `;
+  document.getElementById('detailModal').classList.add('show');
+}
+
+function closeModal() { document.getElementById('detailModal').classList.remove('show'); }
+
+// ── ACTIONS ──
+function buildClientUrl(sessionId) {
+  // Constrói URL do cliente apontando para index.html no mesmo origin
+  const base = location.href.includes('admin.html')
+    ? location.href.replace('admin.html', 'index.html')
+    : location.origin + location.pathname.replace(/\/[^/]*$/, '/index.html');
+  return base.split('?')[0] + '?session=' + sessionId;
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => toast('Link copiado!', 'info')).catch(() => {
+    // fallback
+    const el = document.createElement('textarea');
+    el.value = text; document.body.appendChild(el); el.select();
+    document.execCommand('copy'); document.body.removeChild(el);
+    toast('Link copiado!', 'info');
+  });
+}
+
+async function deleteSession(sessionId, clientName, ownerEmail) {
+  if (!confirm(`Excluir sessão de "${clientName}"?\nEsta ação não pode ser desfeita.`)) return;
+  try {
+    await api(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    // Registrar exclusão no log local
+    deletionLog.unshift({ clientName, ownerEmail, time: new Date().toISOString() });
+    saveDeletionLog();
+    allSessions = allSessions.filter(s => s.id !== sessionId);
+    renderAll();
+    toast('Sessão excluída.', 'info');
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+}
+
+async function resetSession(sessionId) {
+  if (!confirm('Resetar seleção do cliente? Ele poderá selecionar novamente.')) return;
+  try {
+    await api(`/api/sessions/${sessionId}/clear-selection`, { method: 'PUT' });
+    const s = allSessions.find(x => x.id === sessionId);
+    if (s) { s.selections = null; s.confirmedAt = null; }
+    renderAll(); closeModal();
+    toast('Seleção resetada!', 'info');
+  } catch(e) { toast('Erro: ' + e.message, 'error'); }
+}
+
+// ── NAV ──
+function showPage(page) {
+  document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+  const titles = { overview:'Visão Geral', sessions:'Sessões', photographers:'Fotógrafos', activity:'Feed de Atividade' };
+  document.getElementById('topbarTitle').textContent = titles[page] || page;
+}
+
+// ── POLLING ──
+function startPolling() { if (!pollInterval) pollInterval = setInterval(loadAll, 15000); }
+function stopPolling() { clearInterval(pollInterval); pollInterval = null; }
+
+// ── UTILS ──
+function esc(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function fmtDate(iso) { if (!iso) return '—'; return new Date(iso).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function fmtDateFull(iso) { if (!iso) return '—'; return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}); }
+function toast(msg, type='info') {
+  const c = document.getElementById('toasts');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`; t.textContent = msg;
+  c.appendChild(t); setTimeout(()=>t.remove(), 4000);
+}
+
+// ── INIT ──
+(function init() {
+  const { token, email } = loadAdminToken();
+  if (token) { adminToken = token; adminEmail = email || 'Admin'; showAdmin(); return; }
+  document.getElementById('loginEmail').value = ADMIN_EMAIL;
+})();
+</script>
+</body>
+</html>
