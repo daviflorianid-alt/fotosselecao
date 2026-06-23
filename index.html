@@ -202,6 +202,9 @@
   }
   .gitem:hover { transform: translateY(-2px); }
   .gitem.sel { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(200,169,110,0.25); }
+  .gitem.poster-sel { border-color: #f5c842; box-shadow: 0 0 0 2px rgba(245,200,66,0.35); }
+  .gitem.poster-sel .chk { background: #f5c842; border-color: #f5c842; color: #1a1208; font-size: 16px; }
+  .gitem.poster-sel .num { color: #f5c842; }
   .gitem img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
   .gitem:hover img { transform: scale(1.04); }
   .gitem .overlay { position: absolute; inset: 0; background: rgba(200,169,110,0.1); opacity: 0; transition: opacity 0.2s; }
@@ -274,14 +277,9 @@
     <div class="auth-card">
       <div class="auth-logo">Timbé <span>Formaturas</span></div>
       <p class="auth-sub">Plataforma para funcionários</p>
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tabLogin" onclick="switchAuthTab('login')">Entrar</button>
-        <button class="auth-tab" id="tabRegister" onclick="switchAuthTab('register')">Cadastrar</button>
-      </div>
       <div class="auth-form" id="authForm">
-        <input class="auth-input" type="email" id="authEmail" placeholder="E-mail" autocomplete="email">
-        <input class="auth-input" type="text" id="authName" placeholder="Seu nome" style="display:none" autocomplete="name">
-        <input class="auth-input" type="password" id="authPassword" placeholder="Senha" autocomplete="current-password">
+        <input class="auth-input" type="text" id="authUsername" placeholder="Usuário" autocomplete="username" onkeydown="if(event.key==='Enter')submitAuth()">
+        <input class="auth-input" type="password" id="authPassword" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitAuth()">
         <div class="auth-error" id="authError"></div>
         <button class="auth-btn" id="authSubmitBtn" onclick="submitAuth()">Entrar</button>
       </div>
@@ -351,9 +349,15 @@
           <input type="number" id="minPhotos" value="0" min="0">
         </div>
         <div class="form-group">
-          <label>Máximo de fotos</label>
+          <label>Máximo de fotos <span style="font-size:11px;color:var(--accent)">(inclui 1 poster)</span></label>
           <input type="number" id="maxPhotos" value="30" min="1">
         </div>
+      </div>
+      <div class="form-group" style="margin-top:4px;">
+        <label style="font-size:13px;color:var(--muted);">Observações e instruções para o cliente</label>
+        <textarea id="sessionNotes" placeholder="Ex: Selecione 1 foto para capa do álbum e mais 9 favoritas. Priorize fotos ao ar livre…"
+          style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:8px;padding:12px 14px;color:var(--text);font-family:var(--font-body);font-size:14px;outline:none;resize:vertical;min-height:90px;width:100%;transition:border-color 0.2s;line-height:1.5;"
+          onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"></textarea>
       </div>
     </div>
 
@@ -391,17 +395,22 @@
     <h1 id="galleryTitle">Carregando álbum...</h1>
     <p id="gallerySubtitle">Aguarde um momento.</p>
   </div>
-  <div class="gallery-bar">
-    <div class="counter">
-      <em id="selectedCount">0</em> fotos selecionadas
-      <small id="maxHint"></small>
+  <div class="gallery-bar" id="galleryBar" style="display:none;flex-direction:column;gap:8px;padding:12px 32px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;width:100%;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.1em;" id="galleryStepLabel">ETAPA 1 DE 2</div>
+        <div style="font-size:14px;font-weight:500;margin-top:2px;" id="galleryStepDesc">Escolha 1 foto para o POSTER do álbum</div>
+      </div>
+      <div class="counter">
+        <em id="selectedCount">0</em> selecionada<span id="maxHint" style="color:var(--muted);font-size:13px;font-weight:400;margin-left:4px;"></span>
+      </div>
     </div>
-    <div class="gallery-bar-actions">
+    <div class="gallery-bar-actions" style="width:100%;justify-content:flex-end;">
       <button class="download-btn" id="clientDownloadBtn" onclick="downloadSelected()">
         ⬇ Baixar selecionadas
       </button>
-      <button class="confirm-btn" id="confirmBtn" onclick="confirmSelection()" disabled>
-        Confirmar seleção →
+      <button class="confirm-btn" id="confirmBtn" onclick="confirmPoster()" disabled>
+        Confirmar poster →
       </button>
     </div>
   </div>
@@ -441,17 +450,35 @@
 <div class="toasts" id="toasts"></div>
 
 <script>
+// ── USERS (hashed, no plaintext passwords) ──
+const USERS = [
+  {username:'Damaris',hash:'7f67ced24b4c7dd52bf125aa41540c39:d2830836715fde9ac3ee19c35d965649d67749a6132461b7838bf868792d371b',role:'photographer',displayName:'Damaris',email:'damaris@timbeformaturas.com'},
+  {username:'Rafaela',hash:'fb64b995e792a1fe42f6307587b0f411:d57457d1a2a59839c9631e1a93a6187fa441bb40b64d662440c94aeb9df5c8c8',role:'photographer',displayName:'Rafaela',email:'rafaela@timbeformaturas.com'},
+];
+
+async function verifyPassword(password, storedHash) {
+  const [salt, expected] = storedHash.split(':');
+  const saltBuf = hexToBytes(salt);
+  const enc = new TextEncoder().encode(password);
+  const keyMaterial = await crypto.subtle.importKey('raw', enc, 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:310000, hash:'SHA-256' }, keyMaterial, 256);
+  const derived = bytesToHex(new Uint8Array(bits));
+  return derived === expected;
+}
+function hexToBytes(hex) { const b=new Uint8Array(hex.length/2); for(let i=0;i<b.length;i++) b[i]=parseInt(hex.substr(i*2,2),16); return b; }
+function bytesToHex(b) { return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+
 // ── STATE ──
 let pendingPhotos = [];
 let selectedPhotos = new Set();
+let posterPhotoId = null;      // ID da foto selecionada como poster
 let currentSession = null;
 let currentMode = 'photographer';
 let pollInterval = null;
 let authToken = null;
 let authEmail = '';
-let authUserEmail = ''; // email real (para comparar ownerEmail)
-let currentAuthTab = 'login';
-let confirmedSelections = []; // para download após confirmação
+let authUserEmail = '';
+let confirmedSelections = [];
 
 // ── PERSIST TOKEN ──
 function saveToken(token, name, email) {
@@ -475,49 +502,43 @@ async function api(path, options = {}) {
 }
 
 // ── AUTH ──
-function switchAuthTab(tab) {
-  currentAuthTab = tab;
-  document.getElementById('tabLogin').classList.toggle('active', tab === 'login');
-  document.getElementById('tabRegister').classList.toggle('active', tab === 'register');
-  document.getElementById('authName').style.display = tab === 'register' ? 'block' : 'none';
-  document.getElementById('authSubmitBtn').textContent = tab === 'login' ? 'Entrar' : 'Criar conta';
-  document.getElementById('authError').textContent = '';
-}
-
 async function submitAuth() {
-  const email = document.getElementById('authEmail').value.trim();
+  const username = document.getElementById('authUsername').value.trim();
   const password = document.getElementById('authPassword').value;
-  const name = document.getElementById('authName').value.trim();
   const errEl = document.getElementById('authError');
   const btn = document.getElementById('authSubmitBtn');
 
-  if (!email || !password) { errEl.textContent = 'Preencha e-mail e senha.'; return; }
-  if (currentAuthTab === 'register' && !name) { errEl.textContent = 'Preencha seu nome.'; return; }
+  if (!username || !password) { errEl.textContent = 'Preencha usuário e senha.'; return; }
 
   btn.disabled = true;
-  btn.textContent = currentAuthTab === 'login' ? 'Entrando...' : 'Criando conta...';
+  btn.textContent = 'Entrando...';
   errEl.textContent = '';
 
   try {
-    const endpoint = currentAuthTab === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const body = currentAuthTab === 'login' ? { email, password } : { email, password, name };
-    const data = await fetch(WORKER_URL + endpoint, {
+    const user = USERS.find(u => u.username.toLowerCase() === username.toLowerCase());
+    if (!user) throw new Error('Usuário ou senha incorretos.');
+    const ok = await verifyPassword(password, user.hash);
+    if (!ok) throw new Error('Usuário ou senha incorretos.');
+
+    // Gera token local — worker ainda valida via /api/auth/login com credenciais internas
+    // Usamos o email interno para autenticar no worker
+    const res = await fetch(WORKER_URL + '/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ email: user.email, password })
     });
-    const json = await data.json();
-    if (!data.ok) throw new Error(json.error || 'Erro');
+    const json = await res.json();
+    if (!res.ok) throw new Error('Erro ao autenticar no servidor.');
     authToken = json.token;
-    authEmail = json.name || email;
-    authUserEmail = json.email || email; // email real para comparar ownerEmail
+    authEmail = user.displayName;
+    authUserEmail = user.email;
     saveToken(authToken, authEmail, authUserEmail);
     showApp();
   } catch(e) {
     errEl.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
   }
-  btn.disabled = false;
-  btn.textContent = currentAuthTab === 'login' ? 'Entrar' : 'Criar conta';
 }
 
 function showApp() {
@@ -597,6 +618,7 @@ async function createSession() {
   const eventName = document.getElementById('eventName').value.trim() || 'Álbum';
   const minPhotos = parseInt(document.getElementById('minPhotos').value) || 0;
   const maxPhotos = parseInt(document.getElementById('maxPhotos').value) || pendingPhotos.length;
+  const notes = document.getElementById('sessionNotes').value.trim();
 
   const btn = document.getElementById('generateBtn');
   btn.disabled = true;
@@ -627,7 +649,7 @@ async function createSession() {
 
     const { session } = await api('/api/sessions', {
       method: 'POST',
-      body: JSON.stringify({ clientName, eventName, minPhotos, maxPhotos, photos: uploadedPhotos })
+      body: JSON.stringify({ clientName, eventName, minPhotos, maxPhotos, notes, photos: uploadedPhotos })
     });
 
     const link = `${location.origin}${location.pathname}?session=${session.id}`;
@@ -743,13 +765,16 @@ function renderSessions(sessions) {
               ${isOwner ? `<button class="danger-btn" style="font-size:12px;" onclick="clearSelection('${s.id}')">🗑 Excluir sessão</button>` : ''}
             </div>
           </div>
+          ${s.notes ? `<div style="background:rgba(200,169,110,0.07);border:0.5px solid rgba(200,169,110,0.22);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--muted);"><span style="color:var(--accent);font-weight:600;">📋 Obs: </span>${esc(s.notes)}</div>` : ''}
           ${hasSel ? `
             <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Fotos selecionadas pelo cliente:</p>
             <div class="photos-grid">
               ${s.selections.map(p => `
                 <div class="photo-cell">
-                  <div class="photo-thumb"><img src="${p.url}" alt="${p.name}" loading="lazy"></div>
-                  <div class="photo-label">${p.name}</div>
+                  <div class="photo-thumb" style="${p.isPoster ? 'border-color:#f5c842;box-shadow:0 0 0 2px rgba(245,200,66,0.3);' : ''}">
+                    <img src="${p.url}" alt="${p.name}" loading="lazy">
+                  </div>
+                  <div class="photo-label">${p.isPoster ? '⭐ Poster' : p.name}</div>
                 </div>`).join('')}
             </div>
           ` : '<p style="font-size:13px;color:var(--muted);padding:8px 0;">O cliente ainda não confirmou a seleção.</p>'}
@@ -799,6 +824,9 @@ function startPolling() { if (!pollInterval) pollInterval = setInterval(loadSess
 function stopPolling() { clearInterval(pollInterval); pollInterval = null; }
 
 // ── CLIENT GALLERY ──
+// galleryStep: 'poster' | 'photos'
+let galleryStep = 'poster';
+
 async function loadClientGallery(sessionId) {
   const grid = document.getElementById('galleryGrid');
   if (!sessionId) {
@@ -812,16 +840,15 @@ async function loadClientGallery(sessionId) {
     currentSession = session;
 
     document.getElementById('galleryTitle').textContent = `Olá, ${session.clientName}! 🎞`;
-    document.getElementById('gallerySubtitle').textContent = `${session.eventName} — Selecione suas fotos favoritas.`;
-    document.getElementById('maxHint').textContent = `(máx. ${session.maxPhotos})`;
+    document.getElementById('gallerySubtitle').textContent = session.eventName;
 
     selectedPhotos = new Set();
-    document.getElementById('selectedCount').textContent = '0';
-    document.getElementById('confirmBtn').disabled = true;
-    document.getElementById('clientDownloadBtn').classList.remove('show');
+    posterPhotoId = null;
+    galleryStep = 'poster';
 
     if (session.confirmedAt) {
       confirmedSelections = session.selections || [];
+      document.getElementById('galleryBar').style.display = 'none';
       grid.innerHTML = `
         <div class="confirmed-banner" style="grid-column:1/-1">
           <h3>✅ Seleção já confirmada!</h3>
@@ -834,7 +861,83 @@ async function loadClientGallery(sessionId) {
       return;
     }
 
-    grid.innerHTML = session.photos.map((p, i) => `
+    // Mostrar observações do funcionário se existirem
+    renderSessionNotesBanner(session.notes);
+
+    // Iniciar etapa do poster
+    enterPosterStep();
+
+  } catch (e) {
+    grid.innerHTML = `<p style="color:var(--muted);padding:40px;text-align:center;grid-column:1/-1;">Erro ao carregar: ${e.message}</p>`;
+  }
+}
+
+function renderSessionNotesBanner(notes) {
+  const existing = document.getElementById('sessionNotesBanner');
+  if (existing) existing.remove();
+  if (!notes || !notes.trim()) return;
+  const banner = document.createElement('div');
+  banner.id = 'sessionNotesBanner';
+  banner.style.cssText = 'background:rgba(200,169,110,0.08);border:1px solid rgba(200,169,110,0.3);border-radius:14px;padding:20px 24px;margin:20px 32px 0;';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="font-size:18px;">📋</span>
+      <span style="font-size:13px;font-weight:600;color:var(--accent);letter-spacing:0.05em;text-transform:uppercase;">Instruções do fotógrafo</span>
+    </div>
+    <div style="font-size:14px;color:var(--text);line-height:1.7;white-space:pre-wrap;">${esc2(notes)}</div>`;
+  document.querySelector('.gallery-wrap').before(banner);
+}
+
+function enterPosterStep() {
+  galleryStep = 'poster';
+  posterPhotoId = null;
+  document.getElementById('selectedCount').textContent = '0';
+  document.getElementById('maxHint').textContent = '';
+  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('clientDownloadBtn').classList.remove('show');
+
+  // Atualizar barra
+  document.getElementById('galleryStepLabel').textContent = 'ETAPA 1 DE 2';
+  document.getElementById('galleryStepDesc').textContent = 'Escolha 1 foto para o POSTER do álbum';
+  document.getElementById('galleryBar').style.display = 'flex';
+
+  renderGalleryGrid();
+}
+
+function enterPhotosStep() {
+  galleryStep = 'photos';
+  selectedPhotos = new Set();
+  const maxRemaining = currentSession.maxPhotos - 1; // 1 já usada pelo poster
+  const minRemaining = Math.max(0, (currentSession.minPhotos || 0) - 1);
+
+  document.getElementById('selectedCount').textContent = '0';
+  document.getElementById('maxHint').textContent = `(máx. ${maxRemaining})`;
+  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('clientDownloadBtn').classList.remove('show');
+
+  document.getElementById('galleryStepLabel').textContent = 'ETAPA 2 DE 2';
+  document.getElementById('galleryStepDesc').textContent = `Agora selecione mais ${maxRemaining} foto${maxRemaining !== 1 ? 's' : ''} favoritas`;
+
+  renderGalleryGrid();
+}
+
+function renderGalleryGrid() {
+  const grid = document.getElementById('galleryGrid');
+  const photos = currentSession.photos;
+
+  if (galleryStep === 'poster') {
+    grid.innerHTML = photos.map((p, i) => `
+      <div class="gitem" id="gi_${p.id}" onclick="selectPoster('${p.id}')">
+        <img src="${p.url}" alt="${p.name}" loading="lazy">
+        <div class="overlay"></div>
+        <div class="chk">★</div>
+        <div class="num">#${String(i + 1).padStart(3, '0')}</div>
+      </div>
+    `).join('');
+  } else {
+    // Step photos: esconder a foto do poster
+    const otherPhotos = photos.filter(p => p.id !== posterPhotoId);
+    grid.innerHTML = otherPhotos.map((p, i) => `
       <div class="gitem" id="gi_${p.id}" onclick="togglePhoto('${p.id}')">
         <img src="${p.url}" alt="${p.name}" loading="lazy">
         <div class="overlay"></div>
@@ -842,19 +945,41 @@ async function loadClientGallery(sessionId) {
         <div class="num">#${String(i + 1).padStart(3, '0')}</div>
       </div>
     `).join('');
-  } catch (e) {
-    grid.innerHTML = `<p style="color:var(--muted);padding:40px;text-align:center;grid-column:1/-1;">Erro ao carregar: ${e.message}</p>`;
   }
 }
 
-function togglePhoto(id) {
+function selectPoster(id) {
   if (!currentSession) return;
+  // Deselecionar anterior
+  document.querySelectorAll('.gitem.poster-sel').forEach(el => el.classList.remove('poster-sel', 'sel'));
+  posterPhotoId = id;
+  const el = document.getElementById('gi_' + id);
+  if (el) { el.classList.add('sel', 'poster-sel'); }
+  document.getElementById('selectedCount').textContent = '1';
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('confirmBtn').textContent = 'Confirmar poster →';
+  document.getElementById('confirmBtn').onclick = confirmPoster;
+}
+
+function confirmPoster() {
+  if (!posterPhotoId) return;
+  showToast('Poster definido! Agora selecione as demais fotos.', 'info');
+  document.getElementById('confirmBtn').textContent = 'Confirmar seleção →';
+  document.getElementById('confirmBtn').onclick = confirmSelection;
+  enterPhotosStep();
+}
+
+function togglePhoto(id) {
+  if (!currentSession || galleryStep !== 'photos') return;
+  const maxRemaining = currentSession.maxPhotos - 1;
+  const minRemaining = Math.max(0, (currentSession.minPhotos || 0) - 1);
+
   if (selectedPhotos.has(id)) {
     selectedPhotos.delete(id);
     document.getElementById('gi_' + id)?.classList.remove('sel');
   } else {
-    if (selectedPhotos.size >= currentSession.maxPhotos) {
-      showToast(`Máximo de ${currentSession.maxPhotos} fotos atingido!`, 'info');
+    if (selectedPhotos.size >= maxRemaining) {
+      showToast(`Máximo de ${maxRemaining} fotos atingido!`, 'info');
       return;
     }
     selectedPhotos.add(id);
@@ -862,9 +987,8 @@ function togglePhoto(id) {
   }
   const count = selectedPhotos.size;
   document.getElementById('selectedCount').textContent = count;
-  const canConfirm = count >= (currentSession.minPhotos || 0) && count > 0;
+  const canConfirm = count >= minRemaining && count > 0;
   document.getElementById('confirmBtn').disabled = !canConfirm;
-  // show download btn when at least 1 selected
   document.getElementById('clientDownloadBtn').classList.toggle('show', count > 0);
 }
 
@@ -880,7 +1004,13 @@ function downloadConfirmed() {
 
 async function confirmSelection() {
   if (!currentSession) return;
-  const selections = currentSession.photos.filter(p => selectedPhotos.has(p.id));
+  const posterPhoto = currentSession.photos.find(p => p.id === posterPhotoId);
+  const otherPhotos = currentSession.photos.filter(p => selectedPhotos.has(p.id));
+  // Poster sempre primeiro, marcado com isPoster
+  const selections = [
+    ...(posterPhoto ? [{ ...posterPhoto, isPoster: true }] : []),
+    ...otherPhotos
+  ];
   confirmedSelections = selections;
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true; btn.textContent = 'Enviando...';
@@ -890,7 +1020,7 @@ async function confirmSelection() {
       body: JSON.stringify({ selections })
     });
     document.getElementById('modalList').innerHTML = selections.map((p, i) =>
-      `<div class="modal-list-item"><span>#${String(i+1).padStart(2,'0')}</span>${p.name}</div>`
+      `<div class="modal-list-item"><span>#${String(i+1).padStart(2,'0')}</span>${p.isPoster ? '⭐ POSTER — ' : ''}${p.name}</div>`
     ).join('');
     document.getElementById('successModal').classList.add('show');
   } catch (e) {
