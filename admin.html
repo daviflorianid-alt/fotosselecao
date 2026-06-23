@@ -172,7 +172,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
 .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
 .modal-close-btn { float: right; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1; margin-top: -4px; padding: 0 4px; }
 .modal-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; margin-top: 16px; }
-.modal-photo { aspect-ratio: 1; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: var(--surface2); }
+.modal-photo { aspect-ratio: 1; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: var(--surface2); position: relative; }
 .modal-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .modal-photo.sel-photo { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(200,169,110,0.2); }
 .detail-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 0.5px solid var(--border); font-size: 13px; }
@@ -223,7 +223,7 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
     <div class="login-card">
       <div class="login-logo">Timbé <span>Formaturas</span></div>
       <div class="login-badge">PAINEL ADMINISTRATIVO</div>
-      <input class="login-input" type="email" id="loginEmail" placeholder="E-mail admin" autocomplete="email">
+      <input class="login-input" type="text" id="loginUsername" placeholder="Usuário admin" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
       <input class="login-input" type="password" id="loginPassword" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
       <button class="login-btn" id="loginBtn" onclick="doLogin()">Acessar painel →</button>
       <div class="login-error" id="loginError"></div>
@@ -381,14 +381,29 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
 <div class="toasts" id="toasts"></div>
 
 <script>
+// ── ADMIN USER (hashed) ──
+const ADMIN_USER = {username:'AdminTimbe',hash:'f4a00d3bec5736245828586aa54c0dc7:7207e66d8e1efe84286a89a91864f515de72cf9fe7e58e6dee6950b5ea8cc264',email:'admin@fotosselecao.com'};
+
+async function verifyPassword(password, storedHash) {
+  const [salt, expected] = storedHash.split(':');
+  const saltBuf = hexToBytes(salt);
+  const enc = new TextEncoder().encode(password);
+  const keyMaterial = await crypto.subtle.importKey('raw', enc, 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:310000, hash:'SHA-256' }, keyMaterial, 256);
+  const derived = bytesToHex(new Uint8Array(bits));
+  return derived === expected;
+}
+function hexToBytes(hex) { const b=new Uint8Array(hex.length/2); for(let i=0;i<b.length;i++) b[i]=parseInt(hex.substr(i*2,2),16); return b; }
+function bytesToHex(b) { return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+
 // ── STATE ──
 let adminToken = null;
 let adminEmail = '';
 let allSessions = [];
 let currentFilter = 'all';
 let pollInterval = null;
-let avatarMap = {}; // email -> avatar URL (localStorage)
-let deletionLog = []; // {clientName, ownerEmail, ownerName, time}
+let avatarMap = {};
+let deletionLog = [];
 
 // ── PERSIST ──
 function saveAdminToken(t, e) { try { localStorage.setItem('admin_token', t); localStorage.setItem('admin_email', e); } catch(e){} }
@@ -413,21 +428,24 @@ async function api(path, options = {}) {
 
 // ── LOGIN ──
 async function doLogin() {
-  const email = document.getElementById('loginEmail').value.trim();
+  const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value;
   const errEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
-  if (!email || !password) { errEl.textContent = 'Preencha e-mail e senha.'; return; }
+  if (!username || !password) { errEl.textContent = 'Preencha usuário e senha.'; return; }
   btn.disabled = true; btn.textContent = 'Acessando...'; errEl.textContent = '';
   try {
+    if (username.toLowerCase() !== ADMIN_USER.username.toLowerCase()) throw new Error('Credenciais inválidas.');
+    const ok = await verifyPassword(password, ADMIN_USER.hash);
+    if (!ok) throw new Error('Credenciais inválidas.');
     const res = await fetch(WORKER_URL + '/api/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email: ADMIN_USER.email, password })
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'Credenciais inválidas');
     adminToken = json.token;
-    adminEmail = json.name || email;
+    adminEmail = ADMIN_USER.username;
     saveAdminToken(adminToken, adminEmail);
     showAdmin();
   } catch(e) {
@@ -695,6 +713,7 @@ function openDetail(sessionId) {
     <div class="detail-row"><span class="k">Min / Max seleção</span><span class="v">${s.minPhotos||0} / ${s.maxPhotos||'—'}</span></div>
     <div class="detail-row"><span class="k">Status</span><span class="v">${s.confirmedAt?`<span style="color:var(--success)">✅ Confirmado em ${fmtDateFull(s.confirmedAt)}</span>`:'<span style="color:var(--muted)">⏳ Aguardando cliente</span>'}</span></div>
     ${s.confirmedAt?`<div class="detail-row"><span class="k">Fotos selecionadas</span><span class="v" style="color:var(--accent)">${s.selections?.length||0}</span></div>`:''}
+    ${s.notes?`<div class="detail-row" style="flex-direction:column;gap:6px;"><span class="k">📋 Observações</span><span class="v" style="max-width:100%;text-align:left;background:rgba(200,169,110,0.07);border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;">${esc(s.notes)}</span></div>`:''}
     <div class="detail-row"><span class="k">Link do cliente</span><span class="v" style="font-size:11px;font-family:monospace;color:var(--muted)">${esc(clientUrl)}</span></div>
     <div class="modal-actions-row">
       <button class="act-btn" onclick="copyToClipboard('${esc(clientUrl)}')">🔗 Copiar link</button>
@@ -708,7 +727,8 @@ function openDetail(sessionId) {
       </div>
       <div class="modal-photos">
         ${(s.confirmedAt?s.selections:s.photos)?.map(p=>`
-          <div class="modal-photo ${s.confirmedAt?'sel-photo':''}">
+          <div class="modal-photo ${s.confirmedAt?'sel-photo':''}" style="${p.isPoster?'border-color:#f5c842;box-shadow:0 0 0 2px rgba(245,200,66,0.3);':''}" title="${p.isPoster?'⭐ Poster':p.name}">
+            ${p.isPoster?'<div style="position:absolute;top:3px;left:3px;font-size:13px;line-height:1;">⭐</div>':''}
             <img src="${esc(p.url)}" alt="${esc(p.name)}" loading="lazy">
           </div>`).join('')||''}
       </div>
@@ -848,8 +868,7 @@ function toast(msg, type='info') {
 // ── INIT ──
 (function init() {
   const { token, email } = loadAdminToken();
-  if (token) { adminToken = token; adminEmail = email || 'Admin'; showAdmin(); return; }
-  document.getElementById('loginEmail').value = ADMIN_EMAIL;
+  if (token) { adminToken = token; adminEmail = email || 'Admin'; showAdmin(); }
 })();
 </script>
 </body>
