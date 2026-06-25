@@ -714,6 +714,7 @@ function openDetail(sessionId) {
     <div class="detail-row"><span class="k">Status</span><span class="v">${s.confirmedAt?`<span style="color:var(--success)">✅ Confirmado em ${fmtDateFull(s.confirmedAt)}</span>`:'<span style="color:var(--muted)">⏳ Aguardando cliente</span>'}</span></div>
     ${s.confirmedAt?`<div class="detail-row"><span class="k">Fotos selecionadas</span><span class="v" style="color:var(--accent)">${s.selections?.length||0}</span></div>`:''}
     ${s.notes?`<div class="detail-row" style="flex-direction:column;gap:6px;"><span class="k">📋 Observações</span><span class="v" style="max-width:100%;text-align:left;background:rgba(200,169,110,0.07);border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;">${esc(s.notes)}</span></div>`:''}
+    ${s.clientNotes?`<div class="detail-row" style="flex-direction:column;gap:6px;"><span class="k">💬 Obs. do cliente</span><span class="v" style="max-width:100%;text-align:left;background:rgba(91,189,138,0.07);border-radius:6px;padding:8px 10px;font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap;">${esc(s.clientNotes)}</span></div>`:''}
     <div class="detail-row"><span class="k">Link do cliente</span><span class="v" style="font-size:11px;font-family:monospace;color:var(--muted)">${esc(clientUrl)}</span></div>
     <div class="modal-actions-row">
       <button class="act-btn" onclick="copyToClipboard('${esc(clientUrl)}')">🔗 Copiar link</button>
