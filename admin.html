@@ -382,14 +382,14 @@ body { background: var(--bg); color: var(--text); font-family: var(--font-body);
 
 <script>
 // ── ADMIN USER (hashed) ──
-const ADMIN_USER = {username:'AdminTimbe',hash:'f4a00d3bec5736245828586aa54c0dc7:7207e66d8e1efe84286a89a91864f515de72cf9fe7e58e6dee6950b5ea8cc264',email:'admin@fotosselecao.com'};
+const ADMIN_USER = {username:'AdminTimbe',hash:'dfaeac36f1fb61be9246b34b93278847:7e27bcd6586424c0aff42346fdfea410cf9575118fa37efd01c74168c5925f8d',email:'admin@fotosselecao.com'};
 
 async function verifyPassword(password, storedHash) {
   const [salt, expected] = storedHash.split(':');
   const saltBuf = hexToBytes(salt);
   const enc = new TextEncoder().encode(password);
   const keyMaterial = await crypto.subtle.importKey('raw', enc, 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:310000, hash:'SHA-256' }, keyMaterial, 256);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:100000, hash:'SHA-256' }, keyMaterial, 256);
   const derived = bytesToHex(new Uint8Array(bits));
   return derived === expected;
 }
