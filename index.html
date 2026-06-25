@@ -431,8 +431,25 @@
     <p>O funcionário já recebeu sua escolha. Em breve você receberá as fotos editadas.</p>
     <div class="modal-list" id="modalList"></div>
     <div class="modal-actions">
-      <button class="modal-download" onclick="downloadConfirmed()">⬇ Baixar fotos</button>
+      <button class="modal-download" onclick="downloadConfirmed()">⬇ Baixar fotos (ZIP)</button>
       <button class="modal-close" onclick="document.getElementById('successModal').classList.remove('show')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL OBSERVAÇÕES DO CLIENTE -->
+<div class="modal-overlay" id="clientNotesModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-icon">📝</div>
+    <h2>Observações e ajustes</h2>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:16px;">Antes de confirmar, você pode deixar uma mensagem para o fotógrafo — pedidos de ajuste, dúvidas ou qualquer observação.</p>
+    <textarea id="clientNotesInput" placeholder="Ex: Gostaria que a foto 003 fosse mais clara. Na foto 007 pode cortar um pouco mais o lado direito…"
+      style="background:var(--surface2);border:0.5px solid var(--border2);border-radius:10px;padding:14px;color:var(--text);font-family:var(--font-body);font-size:14px;outline:none;resize:vertical;min-height:110px;width:100%;line-height:1.6;margin-bottom:6px;"
+      onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border2)'"></textarea>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:20px;">Campo opcional — pode deixar em branco se não tiver observações.</p>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button onclick="document.getElementById('clientNotesModal').classList.remove('show')" style="background:var(--surface2);border:0.5px solid var(--border2);color:var(--muted);padding:10px 20px;border-radius:8px;cursor:pointer;font-size:14px;">Cancelar</button>
+      <button onclick="submitConfirmation()" style="background:var(--accent);color:#1a1208;font-weight:600;padding:10px 24px;border-radius:8px;border:none;cursor:pointer;font-size:14px;">Confirmar seleção →</button>
     </div>
   </div>
 </div>
@@ -677,34 +694,51 @@ function copyLink() {
 // ── DOWNLOAD HELPER ──
 async function downloadPhotos(photos) {
   if (!photos || !photos.length) { showToast('Nenhuma foto para baixar.', 'info'); return; }
-  showToast(`Baixando ${photos.length} foto${photos.length !== 1 ? 's' : ''}...`, 'info');
+  showToast(`Preparando ZIP com ${photos.length} foto${photos.length !== 1 ? 's' : ''}...`, 'info');
+
+  // Carrega JSZip dinamicamente
+  if (!window.JSZip) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+      s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  const zip = new window.JSZip();
+  const folder = zip.folder('fotos_selecionadas');
+  let ok = 0;
+
   for (const photo of photos) {
     try {
-      // Tenta fetch (funciona se o B2 tiver CORS liberado)
       const res = await fetch(photo.url, { mode: 'cors' });
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = photo.name;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } else {
-        throw new Error('fetch failed');
-      }
+      if (!res.ok) throw new Error('fetch failed');
+      const blob = await res.blob();
+      const prefix = photo.isPoster ? '00_POSTER_' : String(ok + 1).padStart(2, '0') + '_';
+      folder.file(prefix + photo.name, blob);
+      ok++;
     } catch(e) {
-      // Fallback: abre em nova aba (o usuário salva manualmente)
-      const a = document.createElement('a');
-      a.href = photo.url;
-      a.download = photo.name;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a);
+      console.warn('Erro ao baixar', photo.name, e);
     }
-    await new Promise(r => setTimeout(r, 500));
   }
+
+  if (ok === 0) {
+    showToast('Não foi possível baixar as fotos. Verifique o CORS do B2.', 'error');
+    return;
+  }
+
+  showToast(`Gerando ZIP (${ok} fotos)...`, 'info');
+  const content = await zip.generateAsync({ type: 'blob', compression: 'STORE' });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  const sessionName = currentSession?.clientName || 'selecao';
+  a.href = url;
+  a.download = `${sessionName}_fotos_selecionadas.zip`;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`ZIP baixado com ${ok} fotos!`, 'success');
 }
 
 // ── SESSIONS (photographer) ──
@@ -766,6 +800,7 @@ function renderSessions(sessions) {
             </div>
           </div>
           ${s.notes ? `<div style="background:rgba(200,169,110,0.07);border:0.5px solid rgba(200,169,110,0.22);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--muted);"><span style="color:var(--accent);font-weight:600;">📋 Obs: </span>${esc(s.notes)}</div>` : ''}
+          ${s.clientNotes ? `<div style="background:rgba(91,189,138,0.07);border:0.5px solid rgba(91,189,138,0.25);border-radius:8px;padding:12px 14px;margin-bottom:12px;font-size:13px;color:var(--muted);"><span style="color:var(--success);font-weight:600;">💬 Cliente: </span>${esc(s.clientNotes)}</div>` : ''}
           ${hasSel ? `
             <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Fotos selecionadas pelo cliente:</p>
             <div class="photos-grid">
@@ -1003,10 +1038,18 @@ function downloadConfirmed() {
 }
 
 async function confirmSelection() {
+  // Abre modal de observações antes de confirmar
+  document.getElementById('clientNotesInput').value = '';
+  document.getElementById('clientNotesModal').classList.add('show');
+}
+
+async function submitConfirmation() {
   if (!currentSession) return;
+  const clientNotes = document.getElementById('clientNotesInput').value.trim();
+  document.getElementById('clientNotesModal').classList.remove('show');
+
   const posterPhoto = currentSession.photos.find(p => p.id === posterPhotoId);
   const otherPhotos = currentSession.photos.filter(p => selectedPhotos.has(p.id));
-  // Poster sempre primeiro, marcado com isPoster
   const selections = [
     ...(posterPhoto ? [{ ...posterPhoto, isPoster: true }] : []),
     ...otherPhotos
@@ -1017,11 +1060,11 @@ async function confirmSelection() {
   try {
     await api(`/api/sessions/${currentSession.id}/confirm`, {
       method: 'PUT',
-      body: JSON.stringify({ selections })
+      body: JSON.stringify({ selections, clientNotes })
     });
     document.getElementById('modalList').innerHTML = selections.map((p, i) =>
       `<div class="modal-list-item"><span>#${String(i+1).padStart(2,'0')}</span>${p.isPoster ? '⭐ POSTER — ' : ''}${p.name}</div>`
-    ).join('');
+    ).join('') + (clientNotes ? `<div style="margin-top:14px;padding:12px;background:rgba(200,169,110,0.08);border-radius:8px;font-size:13px;color:var(--muted);"><span style="color:var(--accent);font-weight:600;">Sua observação: </span>${esc2(clientNotes)}</div>` : '');
     document.getElementById('successModal').classList.add('show');
   } catch (e) {
     showToast('Erro ao enviar: ' + e.message, 'error');
