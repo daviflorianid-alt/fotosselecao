@@ -452,8 +452,8 @@
 <script>
 // ── USERS (hashed, no plaintext passwords) ──
 const USERS = [
-  {username:'Damaris',hash:'7f67ced24b4c7dd52bf125aa41540c39:d2830836715fde9ac3ee19c35d965649d67749a6132461b7838bf868792d371b',role:'photographer',displayName:'Damaris',email:'damaris@timbeformaturas.com'},
-  {username:'Rafaela',hash:'fb64b995e792a1fe42f6307587b0f411:d57457d1a2a59839c9631e1a93a6187fa441bb40b64d662440c94aeb9df5c8c8',role:'photographer',displayName:'Rafaela',email:'rafaela@timbeformaturas.com'},
+  {username:'Damaris',hash:'c26dece7022e8aac99cb83c2ced3bdf6:6afea28d0595924ac5039053761cd010a7f9df047134c0d476908f221f552a62',role:'photographer',displayName:'Damaris',email:'damaris@timbeformaturas.com'},
+  {username:'Rafaela',hash:'8634261436bf4cca08ade011c0cb36be:e28ff8b59666caebe72ba8140f8cc65e2f52a05b49ddc7c3cd202198c46f9962',role:'photographer',displayName:'Rafaela',email:'rafaela@timbeformaturas.com'},
 ];
 
 async function verifyPassword(password, storedHash) {
@@ -461,7 +461,7 @@ async function verifyPassword(password, storedHash) {
   const saltBuf = hexToBytes(salt);
   const enc = new TextEncoder().encode(password);
   const keyMaterial = await crypto.subtle.importKey('raw', enc, 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:310000, hash:'SHA-256' }, keyMaterial, 256);
+  const bits = await crypto.subtle.deriveBits({ name:'PBKDF2', salt:saltBuf, iterations:100000, hash:'SHA-256' }, keyMaterial, 256);
   const derived = bytesToHex(new Uint8Array(bits));
   return derived === expected;
 }
