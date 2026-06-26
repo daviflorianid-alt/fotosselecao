@@ -1132,6 +1132,7 @@ async function markRead(id) {
 }
 
 function esc2(str) { return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function esc(str) { return esc2(str); }
 
 // ── TOAST ──
 window.showToast = function(msg, type = 'info') {
