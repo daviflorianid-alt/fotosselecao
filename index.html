@@ -595,7 +595,7 @@ function logout() {
   document.getElementById('view-auth').classList.add('active');
   document.getElementById('view-photographer').classList.add('active');
   document.getElementById('view-client').classList.remove('active');
-  document.getElementById('authEmail').value = '';
+  document.getElementById('authUsername').value = '';
   document.getElementById('authPassword').value = '';
   document.getElementById('authError').textContent = '';
 }
@@ -653,7 +653,8 @@ function updatePhotosHint() {
     ? `<span style="color:var(--text)">${numPosters} poster${numPosters>1?'s':''}</span> <span style="color:var(--muted)">+</span> <span style="color:var(--accent);font-weight:600">${remaining} foto${remaining!==1?'s':''}</span>`
     : `<span style="color:var(--danger)">Máximo deve ser maior que ${numPosters}</span>`;
 }
-  if (!pendingPhotos.length) { showToast('Carregue pelo menos uma foto!', 'info'); return; }
+
+async function createSession() {
   const clientName = document.getElementById('clientName').value.trim() || 'Cliente';
   const eventName = document.getElementById('eventName').value.trim() || 'Álbum';
   const minPhotos = parseInt(document.getElementById('minPhotos').value) || 0;
