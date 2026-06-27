@@ -349,8 +349,20 @@
           <input type="number" id="minPhotos" value="0" min="0">
         </div>
         <div class="form-group">
-          <label>Máximo de fotos <span style="font-size:11px;color:var(--accent)">(inclui 1 poster)</span></label>
-          <input type="number" id="maxPhotos" value="30" min="1">
+          <label>Máximo de fotos <span style="font-size:11px;color:var(--accent)">(total, incluindo posters)</span></label>
+          <input type="number" id="maxPhotos" value="30" min="1" oninput="updatePhotosHint()">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantidade de posters <span style="font-size:11px;color:var(--accent)">(etapa 1)</span></label>
+          <input type="number" id="numPosters" value="1" min="1" oninput="updatePhotosHint()">
+        </div>
+        <div class="form-group">
+          <label style="color:var(--muted);font-size:13px;">Fotos adicionais</label>
+          <div id="photosRemainingHint" style="padding:10px 14px;background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;font-size:13px;color:var(--muted);min-height:42px;display:flex;align-items:center;">
+            Configure os campos ao lado
+          </div>
         </div>
       </div>
       <div class="form-group" style="margin-top:4px;">
@@ -570,6 +582,7 @@ function showApp() {
     loadSessions();
     loadReminders();
     startPolling();
+    setTimeout(updatePhotosHint, 100);
   }
 }
 
@@ -629,12 +642,23 @@ function removePhoto(id) { pendingPhotos = pendingPhotos.filter(p => p.id !== id
 function clearPhotos() { pendingPhotos = []; renderPreview(); }
 
 // ── CREATE SESSION ──
-async function createSession() {
+function updatePhotosHint() {
+  const maxPhotos = parseInt(document.getElementById('maxPhotos')?.value) || 0;
+  const numPosters = Math.max(1, parseInt(document.getElementById('numPosters')?.value) || 1);
+  const remaining = maxPhotos - numPosters;
+  const el = document.getElementById('photosRemainingHint');
+  if (!el) return;
+  if (maxPhotos <= 0) { el.textContent = 'Configure os campos ao lado'; return; }
+  el.innerHTML = remaining > 0
+    ? `<span style="color:var(--text)">${numPosters} poster${numPosters>1?'s':''}</span> <span style="color:var(--muted)">+</span> <span style="color:var(--accent);font-weight:600">${remaining} foto${remaining!==1?'s':''}</span>`
+    : `<span style="color:var(--danger)">Máximo deve ser maior que ${numPosters}</span>`;
+}
   if (!pendingPhotos.length) { showToast('Carregue pelo menos uma foto!', 'info'); return; }
   const clientName = document.getElementById('clientName').value.trim() || 'Cliente';
   const eventName = document.getElementById('eventName').value.trim() || 'Álbum';
   const minPhotos = parseInt(document.getElementById('minPhotos').value) || 0;
   const maxPhotos = parseInt(document.getElementById('maxPhotos').value) || pendingPhotos.length;
+  const numPosters = Math.max(1, parseInt(document.getElementById('numPosters').value) || 1);
   const notes = document.getElementById('sessionNotes').value.trim();
 
   const btn = document.getElementById('generateBtn');
@@ -666,7 +690,7 @@ async function createSession() {
 
     const { session } = await api('/api/sessions', {
       method: 'POST',
-      body: JSON.stringify({ clientName, eventName, minPhotos, maxPhotos, notes, photos: uploadedPhotos })
+      body: JSON.stringify({ clientName, eventName, minPhotos, maxPhotos, numPosters, notes, photos: uploadedPhotos })
     });
 
     const link = `${location.origin}${location.pathname}?session=${session.id}`;
@@ -861,6 +885,7 @@ function stopPolling() { clearInterval(pollInterval); pollInterval = null; }
 // ── CLIENT GALLERY ──
 // galleryStep: 'poster' | 'photos'
 let galleryStep = 'poster';
+let posterPhotoIds = new Set(); // múltiplos posters
 
 async function loadClientGallery(sessionId) {
   const grid = document.getElementById('galleryGrid');
@@ -878,6 +903,7 @@ async function loadClientGallery(sessionId) {
     document.getElementById('gallerySubtitle').textContent = session.eventName;
 
     selectedPhotos = new Set();
+    posterPhotoIds = new Set();
     posterPhotoId = null;
     galleryStep = 'poster';
 
@@ -896,10 +922,7 @@ async function loadClientGallery(sessionId) {
       return;
     }
 
-    // Mostrar observações do funcionário se existirem
     renderSessionNotesBanner(session.notes);
-
-    // Iniciar etapa do poster
     enterPosterStep();
 
   } catch (e) {
@@ -925,15 +948,19 @@ function renderSessionNotesBanner(notes) {
 
 function enterPosterStep() {
   galleryStep = 'poster';
-  posterPhotoId = null;
+  posterPhotoIds = new Set();
+  const numPosters = currentSession.numPosters || 1;
   document.getElementById('selectedCount').textContent = '0';
-  document.getElementById('maxHint').textContent = '';
+  document.getElementById('maxHint').textContent = `(máx. ${numPosters})`;
   document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('confirmBtn').textContent = `Confirmar poster${numPosters > 1 ? 'es' : ''} →`;
+  document.getElementById('confirmBtn').onclick = confirmPoster;
   document.getElementById('clientDownloadBtn').classList.remove('show');
 
-  // Atualizar barra
   document.getElementById('galleryStepLabel').textContent = 'ETAPA 1 DE 2';
-  document.getElementById('galleryStepDesc').textContent = 'Escolha 1 foto para o POSTER do álbum';
+  document.getElementById('galleryStepDesc').textContent = numPosters === 1
+    ? 'Escolha 1 foto para o POSTER do álbum'
+    : `Escolha ${numPosters} fotos para os POSTERS do álbum`;
   document.getElementById('galleryBar').style.display = 'flex';
 
   renderGalleryGrid();
@@ -942,12 +969,15 @@ function enterPosterStep() {
 function enterPhotosStep() {
   galleryStep = 'photos';
   selectedPhotos = new Set();
-  const maxRemaining = currentSession.maxPhotos - 1; // 1 já usada pelo poster
-  const minRemaining = Math.max(0, (currentSession.minPhotos || 0) - 1);
+  const numPosters = currentSession.numPosters || 1;
+  const maxRemaining = currentSession.maxPhotos - numPosters;
+  const minRemaining = Math.max(0, (currentSession.minPhotos || 0) - numPosters);
 
   document.getElementById('selectedCount').textContent = '0';
   document.getElementById('maxHint').textContent = `(máx. ${maxRemaining})`;
-  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('confirmBtn').disabled = minRemaining === 0 ? false : true;
+  document.getElementById('confirmBtn').textContent = 'Confirmar seleção →';
+  document.getElementById('confirmBtn').onclick = confirmSelection;
   document.getElementById('clientDownloadBtn').classList.remove('show');
 
   document.getElementById('galleryStepLabel').textContent = 'ETAPA 2 DE 2';
@@ -970,8 +1000,7 @@ function renderGalleryGrid() {
       </div>
     `).join('');
   } else {
-    // Step photos: esconder a foto do poster
-    const otherPhotos = photos.filter(p => p.id !== posterPhotoId);
+    const otherPhotos = photos.filter(p => !posterPhotoIds.has(p.id));
     grid.innerHTML = otherPhotos.map((p, i) => `
       <div class="gitem" id="gi_${p.id}" onclick="togglePhoto('${p.id}')">
         <img src="${p.url}" alt="${p.name}" loading="lazy">
@@ -985,29 +1014,41 @@ function renderGalleryGrid() {
 
 function selectPoster(id) {
   if (!currentSession) return;
-  // Deselecionar anterior
-  document.querySelectorAll('.gitem.poster-sel').forEach(el => el.classList.remove('poster-sel', 'sel'));
-  posterPhotoId = id;
-  const el = document.getElementById('gi_' + id);
-  if (el) { el.classList.add('sel', 'poster-sel'); }
-  document.getElementById('selectedCount').textContent = '1';
-  document.getElementById('confirmBtn').disabled = false;
-  document.getElementById('confirmBtn').textContent = 'Confirmar poster →';
-  document.getElementById('confirmBtn').onclick = confirmPoster;
+  const numPosters = currentSession.numPosters || 1;
+
+  if (posterPhotoIds.has(id)) {
+    // Deselecionar
+    posterPhotoIds.delete(id);
+    document.getElementById('gi_' + id)?.classList.remove('poster-sel', 'sel');
+  } else {
+    if (posterPhotoIds.size >= numPosters) {
+      showToast(`Máximo de ${numPosters} poster${numPosters > 1 ? 's' : ''} atingido!`, 'info');
+      return;
+    }
+    posterPhotoIds.add(id);
+    document.getElementById('gi_' + id)?.classList.add('sel', 'poster-sel');
+  }
+
+  const count = posterPhotoIds.size;
+  document.getElementById('selectedCount').textContent = count;
+  document.getElementById('confirmBtn').disabled = count < numPosters;
+  // manter compatibilidade com posterPhotoId (usa o primeiro)
+  posterPhotoId = posterPhotoIds.size > 0 ? [...posterPhotoIds][0] : null;
 }
 
 function confirmPoster() {
-  if (!posterPhotoId) return;
-  showToast('Poster definido! Agora selecione as demais fotos.', 'info');
-  document.getElementById('confirmBtn').textContent = 'Confirmar seleção →';
-  document.getElementById('confirmBtn').onclick = confirmSelection;
+  const numPosters = currentSession.numPosters || 1;
+  if (posterPhotoIds.size < numPosters) return;
+  const label = numPosters === 1 ? 'Poster definido!' : `${numPosters} posters definidos!`;
+  showToast(`${label} Agora selecione as demais fotos.`, 'info');
   enterPhotosStep();
 }
 
 function togglePhoto(id) {
   if (!currentSession || galleryStep !== 'photos') return;
-  const maxRemaining = currentSession.maxPhotos - 1;
-  const minRemaining = Math.max(0, (currentSession.minPhotos || 0) - 1);
+  const numPosters = currentSession.numPosters || 1;
+  const maxRemaining = currentSession.maxPhotos - numPosters;
+  const minRemaining = Math.max(0, (currentSession.minPhotos || 0) - numPosters);
 
   if (selectedPhotos.has(id)) {
     selectedPhotos.delete(id);
@@ -1048,10 +1089,10 @@ async function submitConfirmation() {
   const clientNotes = document.getElementById('clientNotesInput').value.trim();
   document.getElementById('clientNotesModal').classList.remove('show');
 
-  const posterPhoto = currentSession.photos.find(p => p.id === posterPhotoId);
+  const posterPhotos = currentSession.photos.filter(p => posterPhotoIds.has(p.id));
   const otherPhotos = currentSession.photos.filter(p => selectedPhotos.has(p.id));
   const selections = [
-    ...(posterPhoto ? [{ ...posterPhoto, isPoster: true }] : []),
+    ...posterPhotos.map(p => ({ ...p, isPoster: true })),
     ...otherPhotos
   ];
   confirmedSelections = selections;
